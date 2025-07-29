@@ -21,3 +21,32 @@
 - Инструмент генерации документации к API: Swagger
 - Инструмент автоматизации сборки и развертывания: Docker Compose
 
+monitoring-system/
+├── deployments/                  # Инфраструктура
+│   └── docker-compose.yml
+├── monitoring-center/           # Центр мониторинга
+│   ├── cmd/
+│   │   └── main.go              # Точка входа
+│   ├── internal/
+│   │   ├── transport/           # Бывший "api" (HTTP-обработчики)
+│   │   ├── service/             # Бизнес-логика
+│   │   ├── storage/             # Работа с БД 
+│   │   │   ├── postgres/        # Реализация для PostgreSQL
+│   │   │   └── mongo/           # Реализация для MongoDB
+│   │   ├── models/              # Сущности предметной области
+│   │   └── config/              # Конфигурация
+│   ├── api/                     # OpenAPI спецификации
+│   ├── Dockerfile
+│   └── go.mod
+├── agent/
+│   ├── cmd/
+│   │   └── main.go
+│   ├── internal/
+│   │   ├── collector/           # Сбор метрик
+│   │   ├── sender/              # Отправка данных
+│   │   └── config/
+│   ├── Dockerfile
+│   └── go.mod
+├── migrations/                  # SQL-миграции
+├── scripts/                     # Скрипты для миграций и т.д.
+└── docs/                        # Swagger документация
