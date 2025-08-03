@@ -1,0 +1,55 @@
+services:
+  postgres:
+    platform: linux/amd64
+    image: postgres:14
+    container_name: monitoring-postgres
+    environment:
+      POSTGRES_USER: monitor
+      POSTGRES_PASSWORD: securepass
+      POSTGRES_DB: monitoring
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: mongo:6
+    container_name: monitoring-mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    
+  monitoring-center:
+    build:
+      context: ../monitoring-center  # Указываем путь к папке с Dockerfile
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    environment:
+      POSTGRES_URL: "postgres://monitor:securepass@postgres:5432/monitoring?sslmode=disable"
+      MONGO_URL: "mongodb://root:example@mongodb:27017"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../migrations:/app/migrations  # Монтируем папку с миграциями
+
+volumes:
+  pgdata:
+  mongodata:
