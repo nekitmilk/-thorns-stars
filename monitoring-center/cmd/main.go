@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/nekitmilk/monitoring-center/internal/config"
+	"github.com/nekitmilk/monitoring-center/internal/storage/mongo"
 	"github.com/nekitmilk/monitoring-center/internal/storage/postgres"
 )
 
@@ -26,6 +27,17 @@ func main() {
 	}
 
 	log.Println("Successfully connected to PostgreSQL")
+
+	// Проверка подключения к MongoDB
+	mongoStorage, err := mongo.NewMongoStorage(cfg.MongoURL)
+	if err != nil {
+		log.Fatalf("MongoDB connection failed: %v", err)
+	}
+
+	if err := mongoStorage.Ping(ctx); err != nil {
+		log.Fatalf("MongoDB ping failed: %v", err)
+	}
+	log.Println("Successfully connected to MongoDB")
 
 	// Здесь будет запуск HTTP-сервера
 	log.Printf("Starting server on %s", cfg.ServerAddress)
