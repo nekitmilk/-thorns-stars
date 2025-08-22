@@ -12,7 +12,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U monitor -d monitoring"] 
       interval: 5s
       timeout: 5s
       retries: 5
@@ -33,11 +33,33 @@ services:
       timeout: 5s
       retries: 5
     
+  migrations:
+    image: migrate/migrate:v4.17.1
+    command: 
+      - "-path"
+      - "/migrations"
+      - "-database"
+      - "postgres://monitor:securepass@postgres:5432/monitoring?sslmode=disable"
+      - "up"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../migrations:/migrations
+    healthcheck:
+      test: ["CMD", "migrate", "-path", "/migrations", "-database", "$$POSTGRES_URL", "version"]
+      interval: 10s
+      timeout: 5s
+      retries: 1
+      start_period: 5s
+
   monitoring-center:
     build:
       context: ../monitoring-center  # Указываем путь к папке с Dockerfile
       dockerfile: Dockerfile
     depends_on:
+      migrations:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       mongodb:
@@ -47,8 +69,8 @@ services:
       MONGO_URL: "mongodb://root:example@mongodb:27017"
     ports:
       - "8080:8080"
-    volumes:
-      - ../migrations:/app/migrations  # Монтируем папку с миграциями
+    # volumes:
+    #   - ../migrations:/app/migrations  # Монтируем папку с миграциями
 
 volumes:
   pgdata:
