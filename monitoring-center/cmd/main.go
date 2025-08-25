@@ -60,8 +60,12 @@ func main() {
 	{
 		hosts := api.Group("/hosts")
 		{
-			hosts.GET("", hostHandler.GetHosts)    // GET /api/hosts
-			hosts.POST("", hostHandler.CreateHost) // POST /api/hosts
+			hosts.GET("", hostHandler.GetHosts)             // GET /api/hosts
+			hosts.POST("", hostHandler.CreateHost)          // POST /api/hosts
+			hosts.GET("/:id", hostHandler.GetHostByID)      // GET /api/hosts/{id}
+			hosts.PUT("/:id", hostHandler.UpdateHost)       // PUT /api/hosts/{id}
+			hosts.DELETE("/:id", hostHandler.DeleteHost)    // DELETE /api/hosts/{id}
+			hosts.GET("/master", hostHandler.GetMasterHost) // GET /api/hosts/master
 		}
 	}
 

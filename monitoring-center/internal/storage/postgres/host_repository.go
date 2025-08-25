@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nekitmilk/monitoring-center/internal/models"
 	// "go.mongodb.org/mongo-driver/internal/uuid"
@@ -156,29 +157,128 @@ func (r *HostRepository) FindAll(ctx context.Context, query models.HostsQuery) (
 	return hosts, total, nil
 }
 
-// func (r *HostRepository) GetMasterHost(ctx context.Context) (*models.Host, error) {
-// 	query := `
-// 	    SELECT id, name, ip, priority, status, created_at, updated_at
-//         FROM hosts
-//         ORDER BY priority DESC
-// 		LIMIT 1
-// 	`
+// FindByID возвращает хост по ID
+func (r *HostRepository) FindByID(ctx context.Context, id uuid.UUID) (*models.Host, error) {
+	query := `
+        SELECT id, name, ip, priority, status, created_at, updated_at 
+        FROM hosts 
+        WHERE id = $1
+    `
 
-// 	row := r.pool.QueryRow(ctx, query)
-// 	var host models.Host
-// 	err := row.Scan(
-// 		&host.ID,
-// 		&host.Name,
-// 		&host.IP,
-// 		&host.Priority,
-// 		&host.Status,
-// 		&host.CreatedAt,
-// 		&host.UpdatedAt,
-// 	)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to scan master host: %w", err)
-// 	}
+	var host models.Host
+	err := r.pool.QueryRow(ctx, query, id).Scan(
+		&host.ID,
+		&host.Name,
+		&host.IP,
+		&host.Priority,
+		&host.Status,
+		&host.CreatedAt,
+		&host.UpdatedAt,
+	)
 
-// 	return &host, nil
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to find host: %w", err)
+	}
 
-// }
+	return &host, nil
+}
+
+// Update обновляет данные хоста
+func (r *HostRepository) Update(ctx context.Context, host *models.Host) error {
+	query := `
+        UPDATE hosts 
+        SET name = $1, ip = $2, priority = $3, status = $4, updated_at = $5 
+        WHERE id = $6
+    `
+
+	host.UpdatedAt = time.Now()
+
+	_, err := r.pool.Exec(
+		ctx,
+		query,
+		host.Name,
+		host.IP,
+		host.Priority,
+		host.Status,
+		host.UpdatedAt,
+		host.ID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update host: %w", err)
+	}
+
+	return nil
+}
+
+// Delete удаляет хост по ID
+func (r *HostRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	query := `DELETE FROM hosts WHERE id = $1`
+
+	_, err := r.pool.Exec(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete host: %w", err)
+	}
+
+	return nil
+}
+
+// IsNameExistsExcluding проверяет существование имени, исключая определенный ID
+func (r *HostRepository) IsNameExistsExcluding(ctx context.Context, name string, excludeID uuid.UUID) (bool, error) {
+	query := `SELECT COUNT(*) FROM hosts WHERE name = $1 AND id != $2`
+
+	var count int
+	err := r.pool.QueryRow(ctx, query, name, excludeID).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
+// IsIPExistsExcluding проверяет существование IP, исключая определенный ID
+func (r *HostRepository) IsIPExistsExcluding(ctx context.Context, ip string, excludeID uuid.UUID) (bool, error) {
+	query := `SELECT COUNT(*) FROM hosts WHERE ip = $1 AND id != $2`
+
+	var count int
+	err := r.pool.QueryRow(ctx, query, ip, excludeID).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
+// FindMasterHost возвращает мастер-хост (хост с наивысшим приоритетом среди онлайн хостов)
+func (r *HostRepository) FindMasterHost(ctx context.Context) (*models.Host, error) {
+	query := `
+        SELECT id, name, ip, priority, status, created_at, updated_at 
+        FROM hosts 
+        WHERE status = $1 
+        ORDER BY priority DESC, created_at ASC 
+        LIMIT 1
+    `
+
+	var host models.Host
+	err := r.pool.QueryRow(ctx, query, models.StatusOnline).Scan(
+		&host.ID,
+		&host.Name,
+		&host.IP,
+		&host.Priority,
+		&host.Status,
+		&host.CreatedAt,
+		&host.UpdatedAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to find master host: %w", err)
+	}
+
+	return &host, nil
+}

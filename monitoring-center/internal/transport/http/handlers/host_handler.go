@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/nekitmilk/monitoring-center/internal/models"
 	"github.com/nekitmilk/monitoring-center/internal/storage/postgres"
 )
@@ -144,4 +145,209 @@ func (h *HostHandler) GetHosts(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+// GetHostByID возвращает информацию о конкретном хосте
+// @Summary Get host by ID
+// @Description Get detailed information about a specific host
+// @Tags hosts
+// @Produce json
+// @Param id path string true "Host ID"
+// @Success 200 {object} models.Host
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/hosts/{id} [get]
+func (h *HostHandler) GetHostByID(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid host ID format",
+		})
+		return
+	}
+
+	ctx := c.Request.Context()
+	host, err := h.hostRepo.FindByID(ctx, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to fetch host",
+		})
+		return
+	}
+
+	if host == nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "Host not found",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, host)
+}
+
+// UpdateHost обновляет информацию о хосте
+// @Summary Update host
+// @Description Update information about a specific host
+// @Tags hosts
+// @Accept json
+// @Produce json
+// @Param id path string true "Host ID"
+// @Param request body models.CreateHostRequest true "Host data"
+// @Success 200 {object} models.Host
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/hosts/{id} [put]
+func (h *HostHandler) UpdateHost(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid host ID format",
+		})
+		return
+	}
+
+	var req models.CreateHostRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid input data",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	// Проверяем существование хоста
+	existingHost, err := h.hostRepo.FindByID(ctx, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to check host existence",
+		})
+		return
+	}
+	if existingHost == nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "Host not found",
+		})
+		return
+	}
+
+	// Проверяем уникальность имени (исключая текущий хост)
+	if exists, err := h.hostRepo.IsNameExistsExcluding(ctx, req.Name, id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to check host name",
+		})
+		return
+	} else if exists {
+		c.JSON(http.StatusConflict, gin.H{
+			"error": "Host with this name already exists",
+		})
+		return
+	}
+
+	// Проверяем уникальность IP (исключая текущий хост)
+	if exists, err := h.hostRepo.IsIPExistsExcluding(ctx, req.IP, id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to check host IP",
+		})
+		return
+	} else if exists {
+		c.JSON(http.StatusConflict, gin.H{
+			"error": "Host with this IP already exists",
+		})
+		return
+	}
+
+	// Обновляем данные
+	existingHost.Name = req.Name
+	existingHost.IP = req.IP
+	existingHost.Priority = req.Priority
+
+	if err := h.hostRepo.Update(ctx, existingHost); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to update host",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, existingHost)
+}
+
+// DeleteHost удаляет хост
+// @Summary Delete host
+// @Description Delete a specific host from monitoring
+// @Tags hosts
+// @Produce json
+// @Param id path string true "Host ID"
+// @Success 204
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/hosts/{id} [delete]
+func (h *HostHandler) DeleteHost(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid host ID format",
+		})
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	// Проверяем существование хоста
+	existingHost, err := h.hostRepo.FindByID(ctx, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to check host existence",
+		})
+		return
+	}
+	if existingHost == nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "Host not found",
+		})
+		return
+	}
+
+	if err := h.hostRepo.Delete(ctx, id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to delete host",
+		})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+// GetMasterHost возвращает текущий мастер-хост
+// @Summary Get master host
+// @Description Get the current master host (host with highest priority among online hosts)
+// @Tags hosts
+// @Produce json
+// @Success 200 {object} models.Host
+// @Success 204 "No master host available"
+// @Failure 500 {object} map[string]string
+// @Router /api/hosts/master [get]
+func (h *HostHandler) GetMasterHost(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	masterHost, err := h.hostRepo.FindMasterHost(ctx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to find master host",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	if masterHost == nil {
+		c.Status(http.StatusNoContent)
+		return
+	}
+
+	c.JSON(http.StatusOK, masterHost)
 }
