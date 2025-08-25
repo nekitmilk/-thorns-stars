@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"math"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -80,4 +81,67 @@ func (h *HostHandler) CreateHost(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, host)
+}
+
+// GetHosts возвращает список хостов с пагинацией и фильтрацией
+// @Summary Get all hosts
+// @Description Get list of all monitored hosts with pagination and filtering
+// @Tags hosts
+// @Produce json
+// @Param page query int false "Page number" default(1) minimum(1)
+// @Param limit query int false "Number of items per page" default(20) minimum(1) maximum(100)
+// @Param status query string false "Filter by status" Enums(online, offline, unknown)
+// @Param priority query int false "Filter by priority" minimum(1) maximum(100)
+// @Param search query string false "Search by name or IP"
+// @Success 200 {object} models.HostsResponse
+// @Failure 400 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /api/hosts [get]
+func (h *HostHandler) GetHosts(c *gin.Context) {
+	var query models.HostsQuery
+
+	// Биндим параметры запроса
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid query parameters",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	// Устанавливаем значения по умолчанию
+	if query.Page == 0 {
+		query.Page = 1
+	}
+	if query.Limit == 0 {
+		query.Limit = 20
+	}
+
+	ctx := c.Request.Context()
+	hosts, total, err := h.hostRepo.FindAll(ctx, query)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to fetch hosts",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	// Вычисляем пагинацию
+	totalPages := int(math.Ceil(float64(total) / float64(query.Limit)))
+	hasNext := query.Page < totalPages
+	hasPrevious := query.Page > 1
+
+	// Формируем ответ
+	response := models.HostsResponse{
+		Hosts:       hosts,
+		Total:       total,
+		Page:        query.Page,
+		Limit:       query.Limit,
+		TotalPages:  totalPages,
+		HasNext:     hasNext,
+		HasPrevious: hasPrevious,
+	}
+
+	c.JSON(http.StatusOK, response)
 }
