@@ -32,3 +32,15 @@ func (s *MongoStorage) Ping(ctx context.Context) error {
 func (s *MongoStorage) Close() error {
 	return s.client.Disconnect(context.Background())
 }
+
+func (s *MongoStorage) GetClient() *mongo.Client {
+	return s.client
+}
+
+func (s *MongoStorage) GetDatabase(name string) *mongo.Database {
+	return s.client.Database(name)
+}
+
+func (s *MongoStorage) GetCollection(dbName, collectionName string) *mongo.Collection {
+	return s.client.Database(dbName).Collection(collectionName)
+}

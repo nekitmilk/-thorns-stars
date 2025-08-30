@@ -3,10 +3,12 @@ services:
     platform: linux/amd64
     image: postgres:14
     container_name: monitoring-postgres
+    env_file:
+      - .env
     environment:
-      POSTGRES_USER: monitor
-      POSTGRES_PASSWORD: securepass
-      POSTGRES_DB: monitoring
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
@@ -20,9 +22,11 @@ services:
   mongodb:
     image: mongo:6
     container_name: monitoring-mongo
+    env_file:
+      - .env
     environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: example
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
     ports:
       - "27017:27017"
     volumes:
@@ -69,8 +73,22 @@ services:
       MONGO_URL: "mongodb://root:example@mongodb:27017"
     ports:
       - "8080:8080"
-    # volumes:
-    #   - ../migrations:/app/migrations  # Монтируем папку с миграциями
+
+  monitoring-agent:
+    build: ../agent
+    env_file:
+      - .env
+    environment:
+      - HOST_ID=${HOST_ID}
+      - MONITORING_CENTER_URL=${MONITORING_CENTER_URL}
+      - POLLING_INTERVAL=${POLLING_INTERVAL}
+      - REQUEST_TIMEOUT=${REQUEST_TIMEOUT}
+    volumes:
+      - /:/host:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - monitoring-center
+    restart: unless-stopped
 
 volumes:
   pgdata:

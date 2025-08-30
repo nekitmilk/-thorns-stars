@@ -22,6 +22,11 @@ WORKDIR /app
 # Копируем бинарник
 COPY --from=builder /app/monitoring-center .
 
+RUN adduser -D -u 1000 appuser && \
+    chown appuser:appuser /app/monitoring-center
+
+USER appuser
+
 EXPOSE 8080
 
 CMD ["./monitoring-center"]

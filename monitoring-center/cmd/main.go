@@ -49,12 +49,24 @@ func main() {
 
 	// Инициализация репозитория
 	hostRepo := postgres.NewHostRepository(pgStorage.GetPool())
+	metricRepo := mongo.NewMetricRepository(mongoStorage.GetClient(), "monitoring")
 
 	// Инициализация обработчиков
 	hostHandler := handlers.NewHostHandler(hostRepo)
+	metricHandler := handlers.NewMetricHandler(metricRepo, hostRepo)
+
+	// Создание индексов MongoDB
+	indexCtx, indexCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer indexCancel()
+
+	if err := metricRepo.CreateIndexes(indexCtx); err != nil {
+		log.Printf("Warning: failed to create MongoDB indexes: %v", err)
+	}
 
 	// Настройка роутинга
-	router := gin.Default()
+	// router := gin.Default()
+	router := gin.New()
+	router.Use(gin.Logger(), gin.Recovery())
 
 	api := router.Group("/api")
 	{
@@ -66,11 +78,15 @@ func main() {
 			hosts.PUT("/:id", hostHandler.UpdateHost)       // PUT /api/hosts/{id}
 			hosts.DELETE("/:id", hostHandler.DeleteHost)    // DELETE /api/hosts/{id}
 			hosts.GET("/master", hostHandler.GetMasterHost) // GET /api/hosts/master
-		}
-	}
 
-	// Здесь будет запуск HTTP-сервера
-	// log.Printf("Starting server on %s", cfg.ServerAddress)
+			// Метрики хоста
+			hosts.GET("/:id/metrics", metricHandler.GetHostMetrics)
+			hosts.GET("/:id/metrics/latest", metricHandler.GetLatestHostMetrics)
+		}
+
+		// Эндпоинт для приема метрик от агентов
+		api.POST("/metrics", metricHandler.ReceiveMetrics)
+	}
 
 	// Запуск HTTP сервера с graceful shutdown
 	server := &http.Server{
